@@ -1,0 +1,114 @@
+This job can be monitored from: https://job.c3se.chalmers.se/alvis/6926613
+Using device: cuda
+DualEDSR parameters: 324,898
+NOTE: using Wang et al. PEMFC micro-CT data (out-of-domain smoke test).
+[epoch 000] loss_xyz: train=0.0203 val=0.0045 | PSNR_xyz: train=17.25dB val=18.86dB | time=8.2s mem=2.09GB
+[epoch 001] loss_xyz: train=0.0039 val=0.0034 | PSNR_xyz: train=20.79dB val=20.57dB | time=7.4s mem=2.09GB
+[epoch 002] loss_xyz: train=0.0031 val=0.0035 | PSNR_xyz: train=22.01dB val=20.67dB | time=7.4s mem=2.09GB
+[epoch 003] loss_xyz: train=0.0028 val=0.0034 | PSNR_xyz: train=22.53dB val=20.62dB | time=7.4s mem=2.09GB
+[epoch 004] loss_xyz: train=0.0028 val=0.0031 | PSNR_xyz: train=22.63dB val=21.34dB | time=7.4s mem=2.09GB
+[epoch 005] loss_xyz: train=0.0027 val=0.0031 | PSNR_xyz: train=22.80dB val=20.87dB | time=7.4s mem=2.09GB
+[epoch 006] loss_xyz: train=0.0027 val=0.0035 | PSNR_xyz: train=22.81dB val=20.54dB | time=7.4s mem=2.09GB
+[epoch 007] loss_xyz: train=0.0028 val=0.0032 | PSNR_xyz: train=22.78dB val=21.17dB | time=7.4s mem=2.09GB
+[epoch 008] loss_xyz: train=0.0027 val=0.0033 | PSNR_xyz: train=22.90dB val=20.99dB | time=7.4s mem=2.09GB
+[epoch 009] loss_xyz: train=0.0027 val=0.0035 | PSNR_xyz: train=22.85dB val=20.39dB | time=7.4s mem=2.09GB
+  -> checkpoint saved: outputs/checkpoints/6926613/dual_edsr_epoch0010.pt
+[epoch 010] loss_xyz: train=0.0026 val=0.0028 | PSNR_xyz: train=23.08dB val=21.56dB | time=7.4s mem=2.09GB
+[epoch 011] loss_xyz: train=0.0028 val=0.0029 | PSNR_xyz: train=22.83dB val=21.68dB | time=7.4s mem=2.09GB
+[epoch 012] loss_xyz: train=0.0026 val=0.0033 | PSNR_xyz: train=23.00dB val=20.85dB | time=7.4s mem=2.09GB
+[epoch 013] loss_xyz: train=0.0024 val=0.0031 | PSNR_xyz: train=23.49dB val=21.44dB | time=7.4s mem=2.09GB
+[epoch 014] loss_xyz: train=0.0026 val=0.0034 | PSNR_xyz: train=23.07dB val=20.79dB | time=7.4s mem=2.09GB
+[epoch 015] loss_xyz: train=0.0024 val=0.0030 | PSNR_xyz: train=23.43dB val=21.45dB | time=7.4s mem=2.09GB
+[epoch 016] loss_xyz: train=0.0027 val=0.0035 | PSNR_xyz: train=22.89dB val=20.42dB | time=7.4s mem=2.09GB
+[epoch 017] loss_xyz: train=0.0025 val=0.0033 | PSNR_xyz: train=23.03dB val=21.03dB | time=7.4s mem=2.09GB
+[epoch 018] loss_xyz: train=0.0026 val=0.0029 | PSNR_xyz: train=22.98dB val=21.66dB | time=7.4s mem=2.09GB
+[epoch 019] loss_xyz: train=0.0024 val=0.0032 | PSNR_xyz: train=23.57dB val=21.22dB | time=7.4s mem=2.09GB
+  -> checkpoint saved: outputs/checkpoints/6926613/dual_edsr_epoch0020.pt
+[epoch 020] loss_xyz: train=0.0026 val=0.0033 | PSNR_xyz: train=23.28dB val=20.75dB | time=7.4s mem=2.09GB
+[epoch 021] loss_xyz: train=0.0025 val=0.0032 | PSNR_xyz: train=23.26dB val=21.21dB | time=7.4s mem=2.09GB
+[epoch 022] loss_xyz: train=0.0028 val=0.0036 | PSNR_xyz: train=22.69dB val=20.55dB | time=7.4s mem=2.09GB
+[epoch 023] loss_xyz: train=0.0024 val=0.0029 | PSNR_xyz: train=23.51dB val=21.53dB | time=7.4s mem=2.09GB
+[epoch 024] loss_xyz: train=0.0026 val=0.0030 | PSNR_xyz: train=23.10dB val=21.26dB | time=7.4s mem=2.09GB
+[epoch 025] loss_xyz: train=0.0026 val=0.0029 | PSNR_xyz: train=22.90dB val=21.46dB | time=7.4s mem=2.09GB
+[epoch 026] loss_xyz: train=0.0027 val=0.0029 | PSNR_xyz: train=23.07dB val=21.03dB | time=7.4s mem=2.09GB
+[epoch 027] loss_xyz: train=0.0025 val=0.0028 | PSNR_xyz: train=23.37dB val=22.05dB | time=7.4s mem=2.09GB
+[epoch 028] loss_xyz: train=0.0026 val=0.0034 | PSNR_xyz: train=22.93dB val=20.71dB | time=7.4s mem=2.09GB
+[epoch 029] loss_xyz: train=0.0027 val=0.0034 | PSNR_xyz: train=22.81dB val=20.78dB | time=7.4s mem=2.09GB
+  -> checkpoint saved: outputs/checkpoints/6926613/dual_edsr_epoch0030.pt
+[epoch 030] loss_xyz: train=0.0025 val=0.0030 | PSNR_xyz: train=23.34dB val=21.50dB | time=7.4s mem=2.09GB
+[epoch 031] loss_xyz: train=0.0024 val=0.0032 | PSNR_xyz: train=23.58dB val=21.17dB | time=7.4s mem=2.09GB
+[epoch 032] loss_xyz: train=0.0025 val=0.0033 | PSNR_xyz: train=23.37dB val=20.80dB | time=7.4s mem=2.09GB
+[epoch 033] loss_xyz: train=0.0027 val=0.0034 | PSNR_xyz: train=23.06dB val=20.69dB | time=7.4s mem=2.09GB
+[epoch 034] loss_xyz: train=0.0027 val=0.0031 | PSNR_xyz: train=23.14dB val=21.24dB | time=7.4s mem=2.09GB
+[epoch 035] loss_xyz: train=0.0026 val=0.0030 | PSNR_xyz: train=23.14dB val=21.33dB | time=7.4s mem=2.09GB
+[epoch 036] loss_xyz: train=0.0027 val=0.0034 | PSNR_xyz: train=23.13dB val=20.86dB | time=7.4s mem=2.09GB
+[epoch 037] loss_xyz: train=0.0021 val=0.0031 | PSNR_xyz: train=24.00dB val=21.26dB | time=7.4s mem=2.09GB
+[epoch 038] loss_xyz: train=0.0024 val=0.0031 | PSNR_xyz: train=23.35dB val=21.35dB | time=7.4s mem=2.09GB
+[epoch 039] loss_xyz: train=0.0025 val=0.0033 | PSNR_xyz: train=23.48dB val=20.93dB | time=7.4s mem=2.09GB
+  -> checkpoint saved: outputs/checkpoints/6926613/dual_edsr_epoch0040.pt
+[epoch 040] loss_xyz: train=0.0026 val=0.0031 | PSNR_xyz: train=23.14dB val=21.46dB | time=7.4s mem=2.09GB
+[epoch 041] loss_xyz: train=0.0022 val=0.0029 | PSNR_xyz: train=23.76dB val=21.56dB | time=7.4s mem=2.09GB
+[epoch 042] loss_xyz: train=0.0023 val=0.0032 | PSNR_xyz: train=23.71dB val=21.37dB | time=7.4s mem=2.09GB
+[epoch 043] loss_xyz: train=0.0024 val=0.0032 | PSNR_xyz: train=23.60dB val=21.36dB | time=7.4s mem=2.09GB
+[epoch 044] loss_xyz: train=0.0024 val=0.0031 | PSNR_xyz: train=23.42dB val=21.58dB | time=7.4s mem=2.09GB
+[epoch 045] loss_xyz: train=0.0026 val=0.0030 | PSNR_xyz: train=23.14dB val=21.55dB | time=7.4s mem=2.09GB
+[epoch 046] loss_xyz: train=0.0024 val=0.0034 | PSNR_xyz: train=23.60dB val=21.02dB | time=7.4s mem=2.09GB
+[epoch 047] loss_xyz: train=0.0026 val=0.0031 | PSNR_xyz: train=23.41dB val=21.29dB | time=7.4s mem=2.09GB
+[epoch 048] loss_xyz: train=0.0024 val=0.0035 | PSNR_xyz: train=23.51dB val=20.52dB | time=7.4s mem=2.09GB
+[epoch 049] loss_xyz: train=0.0024 val=0.0030 | PSNR_xyz: train=23.46dB val=21.73dB | time=7.4s mem=2.09GB
+  -> checkpoint saved: outputs/checkpoints/6926613/dual_edsr_epoch0050.pt
+[epoch 050] loss_xyz: train=0.0026 val=0.0031 | PSNR_xyz: train=23.42dB val=21.46dB | time=7.4s mem=2.09GB
+[epoch 051] loss_xyz: train=0.0026 val=0.0029 | PSNR_xyz: train=23.41dB val=21.69dB | time=7.4s mem=2.09GB
+[epoch 052] loss_xyz: train=0.0024 val=0.0029 | PSNR_xyz: train=23.56dB val=21.79dB | time=7.4s mem=2.09GB
+[epoch 053] loss_xyz: train=0.0024 val=0.0028 | PSNR_xyz: train=23.35dB val=21.65dB | time=7.4s mem=2.09GB
+[epoch 054] loss_xyz: train=0.0024 val=0.0033 | PSNR_xyz: train=23.51dB val=20.99dB | time=7.4s mem=2.09GB
+[epoch 055] loss_xyz: train=0.0022 val=0.0032 | PSNR_xyz: train=23.72dB val=20.92dB | time=7.4s mem=2.09GB
+[epoch 056] loss_xyz: train=0.0025 val=0.0031 | PSNR_xyz: train=23.47dB val=21.33dB | time=7.4s mem=2.09GB
+[epoch 057] loss_xyz: train=0.0024 val=0.0031 | PSNR_xyz: train=23.56dB val=21.41dB | time=7.4s mem=2.09GB
+[epoch 058] loss_xyz: train=0.0022 val=0.0029 | PSNR_xyz: train=23.86dB val=21.53dB | time=7.4s mem=2.09GB
+[epoch 059] loss_xyz: train=0.0025 val=0.0030 | PSNR_xyz: train=23.32dB val=21.21dB | time=7.4s mem=2.09GB
+  -> checkpoint saved: outputs/checkpoints/6926613/dual_edsr_epoch0060.pt
+[epoch 060] loss_xyz: train=0.0023 val=0.0034 | PSNR_xyz: train=23.82dB val=20.73dB | time=7.4s mem=2.09GB
+[epoch 061] loss_xyz: train=0.0024 val=0.0033 | PSNR_xyz: train=23.56dB val=21.02dB | time=7.4s mem=2.09GB
+[epoch 062] loss_xyz: train=0.0024 val=0.0029 | PSNR_xyz: train=23.66dB val=21.85dB | time=7.8s mem=2.09GB
+[epoch 063] loss_xyz: train=0.0025 val=0.0031 | PSNR_xyz: train=23.48dB val=21.58dB | time=7.7s mem=2.09GB
+[epoch 064] loss_xyz: train=0.0025 val=0.0031 | PSNR_xyz: train=23.47dB val=21.36dB | time=7.8s mem=2.09GB
+[epoch 065] loss_xyz: train=0.0023 val=0.0031 | PSNR_xyz: train=23.71dB val=21.40dB | time=7.7s mem=2.09GB
+[epoch 066] loss_xyz: train=0.0024 val=0.0030 | PSNR_xyz: train=23.55dB val=21.37dB | time=7.7s mem=2.09GB
+[epoch 067] loss_xyz: train=0.0025 val=0.0036 | PSNR_xyz: train=23.36dB val=20.52dB | time=7.4s mem=2.09GB
+[epoch 068] loss_xyz: train=0.0024 val=0.0031 | PSNR_xyz: train=23.67dB val=21.47dB | time=7.6s mem=2.09GB
+[epoch 069] loss_xyz: train=0.0026 val=0.0033 | PSNR_xyz: train=23.28dB val=21.03dB | time=7.6s mem=2.09GB
+  -> checkpoint saved: outputs/checkpoints/6926613/dual_edsr_epoch0070.pt
+[epoch 070] loss_xyz: train=0.0024 val=0.0034 | PSNR_xyz: train=23.68dB val=20.83dB | time=7.4s mem=2.09GB
+[epoch 071] loss_xyz: train=0.0023 val=0.0030 | PSNR_xyz: train=23.78dB val=21.57dB | time=7.4s mem=2.09GB
+[epoch 072] loss_xyz: train=0.0026 val=0.0029 | PSNR_xyz: train=23.15dB val=21.80dB | time=7.4s mem=2.09GB
+[epoch 073] loss_xyz: train=0.0023 val=0.0035 | PSNR_xyz: train=23.93dB val=20.64dB | time=7.4s mem=2.09GB
+[epoch 074] loss_xyz: train=0.0024 val=0.0033 | PSNR_xyz: train=23.69dB val=21.09dB | time=7.5s mem=2.09GB
+[epoch 075] loss_xyz: train=0.0022 val=0.0030 | PSNR_xyz: train=24.02dB val=21.70dB | time=7.5s mem=2.09GB
+[epoch 076] loss_xyz: train=0.0023 val=0.0037 | PSNR_xyz: train=23.65dB val=20.44dB | time=7.8s mem=2.09GB
+[epoch 077] loss_xyz: train=0.0023 val=0.0031 | PSNR_xyz: train=23.52dB val=21.40dB | time=7.7s mem=2.09GB
+[epoch 078] loss_xyz: train=0.0024 val=0.0028 | PSNR_xyz: train=23.69dB val=21.64dB | time=7.4s mem=2.09GB
+[epoch 079] loss_xyz: train=0.0022 val=0.0035 | PSNR_xyz: train=24.24dB val=20.60dB | time=7.4s mem=2.09GB
+  -> checkpoint saved: outputs/checkpoints/6926613/dual_edsr_epoch0080.pt
+[epoch 080] loss_xyz: train=0.0025 val=0.0030 | PSNR_xyz: train=23.71dB val=21.61dB | time=7.4s mem=2.09GB
+[epoch 081] loss_xyz: train=0.0026 val=0.0033 | PSNR_xyz: train=23.40dB val=21.08dB | time=7.4s mem=2.09GB
+[epoch 082] loss_xyz: train=0.0024 val=0.0034 | PSNR_xyz: train=23.63dB val=20.86dB | time=7.4s mem=2.09GB
+[epoch 083] loss_xyz: train=0.0022 val=0.0027 | PSNR_xyz: train=24.05dB val=22.00dB | time=7.4s mem=2.09GB
+[epoch 084] loss_xyz: train=0.0024 val=0.0032 | PSNR_xyz: train=23.68dB val=21.10dB | time=7.4s mem=2.09GB
+[epoch 085] loss_xyz: train=0.0026 val=0.0036 | PSNR_xyz: train=23.15dB val=20.63dB | time=7.4s mem=2.09GB
+[epoch 086] loss_xyz: train=0.0023 val=0.0032 | PSNR_xyz: train=23.81dB val=21.10dB | time=7.4s mem=2.09GB
+[epoch 087] loss_xyz: train=0.0021 val=0.0029 | PSNR_xyz: train=24.13dB val=21.75dB | time=7.4s mem=2.09GB
+[epoch 088] loss_xyz: train=0.0021 val=0.0031 | PSNR_xyz: train=24.14dB val=21.39dB | time=7.4s mem=2.09GB
+[epoch 089] loss_xyz: train=0.0024 val=0.0032 | PSNR_xyz: train=23.52dB val=21.41dB | time=7.4s mem=2.09GB
+  -> checkpoint saved: outputs/checkpoints/6926613/dual_edsr_epoch0090.pt
+[epoch 090] loss_xyz: train=0.0022 val=0.0031 | PSNR_xyz: train=23.95dB val=21.50dB | time=7.4s mem=2.09GB
+[epoch 091] loss_xyz: train=0.0025 val=0.0031 | PSNR_xyz: train=23.58dB val=21.11dB | time=7.4s mem=2.09GB
+[epoch 092] loss_xyz: train=0.0022 val=0.0026 | PSNR_xyz: train=23.99dB val=22.14dB | time=7.4s mem=2.09GB
+[epoch 093] loss_xyz: train=0.0023 val=0.0031 | PSNR_xyz: train=23.94dB val=21.52dB | time=7.4s mem=2.09GB
+[epoch 094] loss_xyz: train=0.0023 val=0.0030 | PSNR_xyz: train=23.60dB val=21.45dB | time=7.4s mem=2.09GB
+[epoch 095] loss_xyz: train=0.0023 val=0.0032 | PSNR_xyz: train=23.95dB val=21.03dB | time=7.4s mem=2.09GB
+[epoch 096] loss_xyz: train=0.0023 val=0.0031 | PSNR_xyz: train=23.96dB val=21.32dB | time=7.4s mem=2.09GB
+[epoch 097] loss_xyz: train=0.0026 val=0.0032 | PSNR_xyz: train=23.24dB val=21.17dB | time=7.4s mem=2.09GB
+[epoch 098] loss_xyz: train=0.0025 val=0.0032 | PSNR_xyz: train=23.31dB val=21.47dB | time=7.4s mem=2.09GB
+[epoch 099] loss_xyz: train=0.0023 val=0.0031 | PSNR_xyz: train=23.83dB val=21.77dB | time=7.4s mem=2.09GB
+  -> checkpoint saved: outputs/checkpoints/6926613/dual_edsr_epoch0100.pt

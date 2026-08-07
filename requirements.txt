@@ -1,0 +1,6 @@
+givernylocal
+numpy
+matplotlib
+pandas
+pyyaml
+tqdm
