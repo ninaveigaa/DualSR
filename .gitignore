@@ -1,0 +1,11 @@
+outputs/
+data/
+*.npy
+*.pt
+*.pth
+*.sif
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+wandb/
+*.log
