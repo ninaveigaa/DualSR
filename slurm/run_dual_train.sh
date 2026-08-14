@@ -2,8 +2,8 @@
 #SBATCH -A NAISS2025-3-39
 #SBATCH -p alvis
 #SBATCH -N 1
-#SBATCH --gpus-per-node=A100fat:1
-#SBATCH -t 04:00:00
+#SBATCH --gpus-per-node=A40:1
+#SBATCH -t 10:00:00
 #SBATCH -J dualedsr_train
 #SBATCH -o slurm/logs/dualedsr_%j.out
 #SBATCH -e slurm/logs/dualedsr_%j.err
@@ -19,7 +19,7 @@ cd /mimer/NOBACKUP/groups/kthmech/nvlmds/DualSR
 source venv/bin/activate
 
 python -u src/train.py \
-    --data_source wang \
+    --data_source deeprock \
     --iterations 100000 \
     --n_train 200 \
     --n_valid 40 \

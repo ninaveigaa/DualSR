@@ -14,6 +14,14 @@ dual_physics_loss() applies this same physics_loss() to BOTH stages
 of the DualEDSR model (XY stage and XYZ stage), using per-axis grid
 spacing since the intermediate XY-resolved field has an anisotropic
 grid (X, Y already at HR resolution; Z still at LR resolution).
+
+loss_type ("mse" or "l1") controls the base reconstruction term
+(the w_U-weighted term only). "l1" matches Wang, Armstrong &
+Mostaghimi (2019)'s eq. (2) L1Loss, used for their SRCNN-only
+training on DeepRock-SR-3D. The other physics penalty terms
+(gradient/continuity/vorticity/enstrophy/strain) remain L2 residuals
+regardless of loss_type -- they are not addressed by that paper and
+are zero-weighted for the deeprock/wang data sources anyway.
 """
 
 import torch
@@ -68,18 +76,41 @@ def strain_rate_magnitude(du):
 
 
 # ---------------------------------------------------------------------
+# Base reconstruction loss (L1 or L2)
+# ---------------------------------------------------------------------
+
+def _base_recon_loss(pred, target, loss_type="mse"):
+    """
+    Base pixelwise reconstruction loss between prediction and target.
+
+    loss_type="mse" (default): L2 loss, torch.nn.functional.mse_loss.
+        Matches this project's original PhysicsNeMo-derived default.
+    loss_type="l1": L1 loss, torch.nn.functional.l1_loss. Matches
+        Wang, Armstrong & Mostaghimi (2019)'s eq. (2) L1Loss.
+    """
+    if loss_type == "l1":
+        return F.l1_loss(pred, target)
+    elif loss_type == "mse":
+        return F.mse_loss(pred, target)
+    else:
+        raise ValueError(f"Unknown loss_type: {loss_type!r} (expected 'mse' or 'l1')")
+
+
+# ---------------------------------------------------------------------
 # Physics-informed loss (single-stage)
 # ---------------------------------------------------------------------
 
 def physics_loss(pred, target, dx=1.0, dy=1.0, dz=1.0,
                   w_U=1.0, w_dU=0.0, w_continuity=0.0,
-                  w_omega=0.1, w_enstrophy=0.0, w_strain=0.0):
+                  w_omega=0.1, w_enstrophy=0.0, w_strain=0.0,
+                  loss_type="mse"):
     """
-    Weighted sum of velocity MSE plus optional physics-based terms.
-    Default weights match the NVIDIA PhysicsNeMo turbulence
-    super-resolution example (w_U=1.0, w_omega=0.1, rest=0).
+    Weighted sum of a base reconstruction loss (L1 or L2, via
+    loss_type) plus optional physics-based terms. Default weights
+    match the NVIDIA PhysicsNeMo turbulence super-resolution example
+    (w_U=1.0, w_omega=0.1, rest=0).
     """
-    loss = w_U * F.mse_loss(pred, target)
+    loss = w_U * _base_recon_loss(pred, target, loss_type=loss_type)
 
     need_grad = (w_dU + w_continuity + w_omega + w_enstrophy + w_strain) > 0
     if need_grad:
@@ -125,7 +156,7 @@ DEFAULT_PHYSICS_WEIGHTS = dict(
 
 def dual_physics_loss(pred_xy, pred_xyz, hr_z, hr,
                        dx_hr=1.0, dy_hr=1.0, dz_hr=1.0, dz_lr=1.0,
-                       weights=None):
+                       weights=None, loss_type="mse"):
     """
     pred_xy:  [B, 3, Nx*scale, Ny*scale, Nz]        -- XY resolved, Z still LR
     pred_xyz: [B, 3, Nx*scale, Ny*scale, Nz*scale]  -- fully resolved volume
@@ -134,6 +165,9 @@ def dual_physics_loss(pred_xy, pred_xyz, hr_z, hr,
 
     dz_lr: grid spacing along Z in the intermediate stage (Z not yet
            upsampled, so spacing is coarser than the final dz_hr).
+
+    loss_type: "mse" (default, unchanged behavior) or "l1" (matches
+        Wang, Armstrong & Mostaghimi, 2019, eq. 2).
 
     Returns: (loss_total, loss_xy, loss_xyz) -- kept separate so both
     training and validation loops can log each stage's contribution
@@ -146,6 +180,7 @@ def dual_physics_loss(pred_xy, pred_xyz, hr_z, hr,
     loss_xy = physics_loss(
         pred_xy, hr_z,
         dx=dx_hr, dy=dy_hr, dz=dz_lr,
+        loss_type=loss_type,
         **weights
     )
 
@@ -153,33 +188,9 @@ def dual_physics_loss(pred_xy, pred_xyz, hr_z, hr,
     loss_xyz = physics_loss(
         pred_xyz, hr,
         dx=dx_hr, dy=dy_hr, dz=dz_hr,
+        loss_type=loss_type,
         **weights
     )
 
     loss_total = loss_xy + loss_xyz
     return loss_total, loss_xy, loss_xyz
-
-
-if __name__ == "__main__":
-    # sanity check with dummy tensors -- no real data required
-    B, C = 1, 3
-    Nx, Ny, Nz = 128, 128, 32       # intermediate (XY-resolved) shape
-    Nz2 = 128                        # fully resolved Z
-
-    pred_xy = torch.randn(B, C, Nx, Ny, Nz, requires_grad=True)
-    pred_xyz = torch.randn(B, C, Nx, Ny, Nz2, requires_grad=True)
-    hr_z = torch.randn(B, C, Nx, Ny, Nz)
-    hr = torch.randn(B, C, Nx, Ny, Nz2)
-
-    loss_total, loss_xy, loss_xyz = dual_physics_loss(
-        pred_xy, pred_xyz, hr_z, hr,
-        dx_hr=1.0, dy_hr=1.0, dz_hr=1.0, dz_lr=4.0,
-    )
-
-    print("loss_xy:   ", loss_xy.item())
-    print("loss_xyz:  ", loss_xyz.item())
-    print("loss_total:", loss_total.item())
-
-    loss_total.backward()
-    print("Backward pass OK -- pred_xy.grad is not None:", pred_xy.grad is not None)
-    print("Backward pass OK -- pred_xyz.grad is not None:", pred_xyz.grad is not None)

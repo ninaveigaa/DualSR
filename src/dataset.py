@@ -5,6 +5,7 @@ src/dataset.py
 import os
 import random
 import numpy as np
+import h5py
 import torch
 import torch.nn.functional as F
 
@@ -176,3 +177,53 @@ class WangCTDataset(torch.utils.data.Dataset):
         hr_patch = self.hr[:, x*s:(x+p)*s, y*s:(y+p)*s, z*s:(z+p)*s]
 
         return {"lr": lr_patch, "hr_z": hr_z_patch, "hr": hr_patch, "axis_mode": 0}
+
+
+class DeepRockDataset(torch.utils.data.Dataset):
+    """
+    Loads DeepRock-SR-3D (Wang, Armstrong & Mostaghimi, 2019) HR/LR
+    volume pairs from the Digital Porous Media portal
+    (DOI: 10.17612/s3m9-e024). Files are MATLAB v7.3 (HDF5), variable
+    name 'temp', single-channel uint8, normalized to [-1,1] matching
+    the original DualEDSR preprocessing convention.
+
+    Filename convention: HR files are named '{id}.mat' (e.g. '0001.mat'),
+    LR files are named '{id}x{scale}.mat' (e.g. '0001x4.mat').
+
+    Unlike WangCTDataset (a single large volume with random patch
+    cropping), each file here is already an independent, complete
+    sample -- no patch cropping needed. This provides genuine sample
+    diversity (not just re-crops of one volume), addressing the
+    overfitting risk anticipated with the single-volume Wang PEMFC
+    dataset.
+    """
+
+    def __init__(self, hr_dir, lr_dir, scale=4, n_samples=None):
+        self.hr_dir = hr_dir
+        self.lr_dir = lr_dir
+        self.scale = scale
+        self.filenames = sorted(os.listdir(hr_dir))
+        if n_samples is not None:
+            self.filenames = self.filenames[:n_samples]
+
+    def __len__(self):
+        return len(self.filenames)
+
+    def _load_mat(self, path):
+        with h5py.File(path, 'r') as f:
+            vol = f['temp'][()]
+        vol = vol.astype(np.float32) / 127.5 - 1.0
+        return torch.from_numpy(vol).unsqueeze(0)  # [1, D, H, W]
+
+    def __getitem__(self, idx):
+        hr_fname = self.filenames[idx]
+        base_id = hr_fname.replace('.mat', '')
+        lr_fname = f"{base_id}x{self.scale}.mat"
+
+        hr = self._load_mat(os.path.join(self.hr_dir, hr_fname))
+        lr = self._load_mat(os.path.join(self.lr_dir, lr_fname))
+
+        hr_z = F.avg_pool3d(hr.unsqueeze(0), kernel_size=(1, 1, self.scale),
+                             stride=(1, 1, self.scale)).squeeze(0)
+
+        return {"lr": lr, "hr_z": hr_z, "hr": hr, "axis_mode": 0}

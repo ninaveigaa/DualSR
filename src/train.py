@@ -1,14 +1,21 @@
 """
 src/train.py
 
-Iteration-based training loop for DualEDSR. Since both WangCTDataset
-and (eventually) TurbulencePatchDataset generate a fresh random patch
-on every __getitem__ call, "epochs" over a fixed dataset are not a
-meaningful concept here -- training is instead driven by a fixed
-number of iterations, with periodic validation and checkpointing.
+Iteration-based training loop for axial-factorized super-resolution
+models. Supports two 2D-solver backbones, selected via --model_type:
+  - "dualedsr": EDSR2D-based (Wang et al. port)
+  - "dualhat":  HAT-based (XPixelGroup official architecture)
+
+Both models share the same forward-pass permutation logic (XY stage,
+then Z stage) and the same dict interface for datasets
+({"lr", "hr_z", "hr", "axis_mode"}).
 
 Tracks the physics-informed loss (per stage: xy, xyz) and PSNR
 (per stage), logged to CSV every `log_every` iterations.
+
+--loss_type ("mse", default, or "l1") selects the base reconstruction
+loss used inside dual_physics_loss(). "l1" matches Wang, Armstrong &
+Mostaghimi (2019)'s SRCNN training recipe (their eq. 2).
 """
 
 import os
@@ -16,14 +23,14 @@ import time
 import csv
 import math
 import argparse
-import itertools
 
 import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 
 from DualEDSR_arch import DualEDSR
-from dataset import WangCTDataset
+from HATDualSR_arch import DualHAT
+from dataset import WangCTDataset, DeepRockDataset
 from losses import dual_physics_loss, DEFAULT_PHYSICS_WEIGHTS
 
 
@@ -70,8 +77,7 @@ def compute_psnr(pred, target, eps=1e-8):
 
 def infinite_loader(loader):
     """Wraps a DataLoader so it can be iterated indefinitely, cycling
-    through the dataset repeatedly (each __getitem__ call still
-    produces a fresh random patch, so this is not literal repetition)."""
+    through the dataset repeatedly."""
     while True:
         for batch in loader:
             yield batch
@@ -82,7 +88,8 @@ def infinite_loader(loader):
 # ---------------------------------------------------------------------
 
 def train_step(model, batch, optimizer, weights, device,
-                dx_hr=1.0, dy_hr=1.0, dz_hr=1.0, dz_lr=None):
+                dx_hr=1.0, dy_hr=1.0, dz_hr=1.0, dz_lr=None,
+                loss_type="mse"):
     if dz_lr is None:
         dz_lr = dz_hr * model.scale
 
@@ -97,7 +104,7 @@ def train_step(model, batch, optimizer, weights, device,
     loss_total, loss_xy, loss_xyz = dual_physics_loss(
         pred_xy, pred_xyz, hr_z, hr,
         dx_hr=dx_hr, dy_hr=dy_hr, dz_hr=dz_hr, dz_lr=dz_lr,
-        weights=weights,
+        weights=weights, loss_type=loss_type,
     )
     loss_total.backward()
     optimizer.step()
@@ -111,7 +118,8 @@ def train_step(model, batch, optimizer, weights, device,
 
 @torch.no_grad()
 def validate(model, loader, weights, device, n_batches=None,
-             dx_hr=1.0, dy_hr=1.0, dz_hr=1.0, dz_lr=None):
+             dx_hr=1.0, dy_hr=1.0, dz_hr=1.0, dz_lr=None,
+             loss_type="mse"):
     if dz_lr is None:
         dz_lr = dz_hr * model.scale
 
@@ -129,7 +137,7 @@ def validate(model, loader, weights, device, n_batches=None,
         _, loss_xy, loss_xyz = dual_physics_loss(
             pred_xy, pred_xyz, hr_z, hr,
             dx_hr=dx_hr, dy_hr=dy_hr, dz_hr=dz_hr, dz_lr=dz_lr,
-            weights=weights,
+            weights=weights, loss_type=loss_type,
         )
 
         total_loss_xy += loss_xy.item()
@@ -152,9 +160,11 @@ def validate(model, loader, weights, device, n_batches=None,
 def train(model, train_loader, val_loader, optimizer, total_iterations,
           weights, device, log_path, checkpoint_dir,
           val_every=1000, checkpoint_every=5000, log_every=100,
-          val_batches=20):
+          val_batches=20, loss_type="mse"):
     os.makedirs(os.path.dirname(log_path), exist_ok=True)
     os.makedirs(checkpoint_dir, exist_ok=True)
+
+    print(f"Using loss_type='{loss_type}' for the base reconstruction term.")
 
     fieldnames = ["iteration",
                   "train_loss_xy", "train_loss_xyz",
@@ -180,7 +190,7 @@ def train(model, train_loader, val_loader, optimizer, total_iterations,
     for it in range(1, total_iterations + 1):
         batch = next(train_iter)
         loss_xy, loss_xyz, psnr_xy, psnr_xyz = train_step(
-            model, batch, optimizer, weights, device)
+            model, batch, optimizer, weights, device, loss_type=loss_type)
 
         running_loss_xy += loss_xy
         running_loss_xyz += loss_xyz
@@ -189,7 +199,8 @@ def train(model, train_loader, val_loader, optimizer, total_iterations,
 
         if it % val_every == 0 or it == total_iterations:
             val_loss_xy, val_loss_xyz, val_psnr_xy, val_psnr_xyz = validate(
-                model, val_loader, weights, device, n_batches=val_batches)
+                model, val_loader, weights, device, n_batches=val_batches,
+                loss_type=loss_type)
 
         if it % log_every == 0 or it == total_iterations:
             n = log_every if it % log_every == 0 else (it % log_every)
@@ -221,7 +232,7 @@ def train(model, train_loader, val_loader, optimizer, total_iterations,
             running_psnr_xy, running_psnr_xyz = 0.0, 0.0
 
         if it % checkpoint_every == 0 or it == total_iterations:
-            ckpt_path = os.path.join(checkpoint_dir, f"dual_edsr_iter{it:07d}.pt")
+            ckpt_path = os.path.join(checkpoint_dir, f"model_iter{it:07d}.pt")
             torch.save(model.state_dict(), ckpt_path)
             print(f"  -> checkpoint saved: {ckpt_path}")
 
@@ -230,49 +241,103 @@ def train(model, train_loader, val_loader, optimizer, total_iterations,
 # Entry point
 # ---------------------------------------------------------------------
 
+def parse_int_tuple(s):
+    """Parses a comma-separated string like '6,6' into (6, 6)."""
+    return tuple(int(x) for x in s.split(","))
+
+
 def main():
     parser = argparse.ArgumentParser()
+
+    # data / general
     parser.add_argument("--domain_size_lr", type=int, default=32,
-                         help="LR cube size (HR = domain_size_lr * scale)")
+                         help="LR cube size. Only used by dummy/wang/jhtdb "
+                              "data sources.")
     parser.add_argument("--scale", type=int, default=4)
     parser.add_argument("--n_train", type=int, default=200,
-                         help="patches per training-loader pass (arbitrary, "
-                              "since each __getitem__ crops a fresh patch)")
+                         help="Only used by dummy/wang data sources "
+                              "(deeprock uses its full available split).")
     parser.add_argument("--n_valid", type=int, default=40)
     parser.add_argument("--batch_size", type=int, default=1)
     parser.add_argument("--iterations", type=int, default=100000)
     parser.add_argument("--val_every", type=int, default=1000)
     parser.add_argument("--checkpoint_every", type=int, default=5000)
     parser.add_argument("--log_every", type=int, default=100)
-    parser.add_argument("--val_batches", type=int, default=20,
-                         help="number of validation batches per validation pass")
+    parser.add_argument("--val_batches", type=int, default=20)
     parser.add_argument("--lr", type=float, default=1e-4)
-    parser.add_argument("--base_filters", type=int, default=32)
-    parser.add_argument("--n_res_blocks", type=int, default=4)
+    parser.add_argument("--loss_type", type=str, default="mse",
+                         choices=["mse", "l1"],
+                         help="Base reconstruction loss. 'l1' matches "
+                              "Wang, Armstrong & Mostaghimi (2019) eq. 2.")
     parser.add_argument("--data_source", type=str, default="dummy",
-                         choices=["dummy", "wang", "jhtdb"])
+                         choices=["dummy", "wang", "deeprock", "jhtdb"])
     parser.add_argument("--log_path", type=str,
-                         default="outputs/logs/dual_train_log.csv")
+                         default="outputs/logs/train_log.csv")
     parser.add_argument("--checkpoint_dir", type=str,
                          default="outputs/checkpoints")
+
+    # model selection
+    parser.add_argument("--model_type", type=str, default="dualedsr",
+                         choices=["dualedsr", "dualhat"])
+
+    # DualEDSR-specific
+    parser.add_argument("--base_filters", type=int, default=64,
+                         help="[dualedsr] Matches Wang et al.'s original "
+                              "ngsrf default (64).")
+    parser.add_argument("--n_res_blocks", type=int, default=16,
+                         help="[dualedsr] Matches Wang et al.'s original "
+                              "numResBlocks default (16).")
+    parser.add_argument("--symmetric_z", action="store_true",
+                         help="[dualedsr] Give the Z stage the SAME "
+                              "capacity as the XY stage (no //2 split). "
+                              "Deviates from Wang et al.'s original "
+                              "design; roughly doubles model size/cost. "
+                              "Default: off (matches original behavior).")
+
+    # DualHAT-specific
+    parser.add_argument("--embed_dim", type=int, default=60,
+                         help="[dualhat] Embedding dimension for the XY "
+                              "stage (Z stage uses half).")
+    parser.add_argument("--window_size", type=int, default=5,
+                         help="[dualhat] Must evenly divide the LR input's "
+                              "H/W and the resulting HR H/W.")
+    parser.add_argument("--hat_depths", type=parse_int_tuple, default="6,6",
+                         help="[dualhat] Comma-separated RHAG depths for "
+                              "the XY stage, e.g. '6,6' or '6,6,6,6'.")
+    parser.add_argument("--hat_num_heads", type=parse_int_tuple, default="6,6",
+                         help="[dualhat] Comma-separated attention heads "
+                              "per RHAG, matching --hat_depths length.")
+
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    in_channels = 1 if args.data_source == "wang" else 3
-    model = DualEDSR(scale=args.scale, base_filters=args.base_filters,
-                      n_res_blocks=args.n_res_blocks, in_channels=in_channels).to(device)
+    in_channels = 1 if args.data_source in ("wang", "deeprock") else 3
+
+    if args.model_type == "dualedsr":
+        model = DualEDSR(scale=args.scale, base_filters=args.base_filters,
+                          n_res_blocks=args.n_res_blocks,
+                          in_channels=in_channels,
+                          symmetric_z=args.symmetric_z).to(device)
+    else:  # dualhat
+        model = DualHAT(scale=args.scale, in_channels=in_channels,
+                         embed_dim=args.embed_dim,
+                         depths=args.hat_depths,
+                         num_heads=args.hat_num_heads,
+                         window_size=args.window_size).to(device)
 
     n_params = sum(p.numel() for p in model.parameters())
-    print(f"DualEDSR parameters: {n_params:,}")
+    print(f"Model: {args.model_type} | parameters: {n_params:,}")
 
     if args.data_source == "dummy":
         print("WARNING: using synthetic dummy data.")
         train_set = DummyTurbulenceDataset(args.n_train, args.domain_size_lr, args.scale)
         val_set = DummyTurbulenceDataset(args.n_valid, args.domain_size_lr, args.scale)
+
     elif args.data_source == "wang":
-        print("NOTE: using Wang et al. PEMFC micro-CT data (out-of-domain smoke test).")
+        print("NOTE: using Wang et al. PEMFC micro-CT data (single volume, "
+              "expect overfitting -- see README notes).")
         train_set = WangCTDataset(
             "data/wang_pemfc/training/HR/HR.npy",
             "data/wang_pemfc/training/LR/LR.npy",
@@ -281,7 +346,22 @@ def main():
             "data/wang_pemfc/validation/HR/HR.npy",
             "data/wang_pemfc/validation/LR/LR.npy",
             scale=args.scale, patch_size_lr=args.domain_size_lr, n_patches=args.n_valid)
-    else:
+
+    elif args.data_source == "deeprock":
+        print("NOTE: using DeepRock-SR-3D shuffled3D (sandstone+carbonate+coal, "
+              "pre-combined) data.")
+        base = "data/deeprock_sr/DeepRockSR-3D/shuffled3D"
+        train_set = DeepRockDataset(
+            hr_dir=f"{base}/shuffled3D_train_HR",
+            lr_dir=f"{base}/shuffled3D_train_LR_default_X{args.scale}",
+            scale=args.scale)
+        val_set = DeepRockDataset(
+            hr_dir=f"{base}/shuffled3D_valid_HR",
+            lr_dir=f"{base}/shuffled3D_valid_LR_default_X{args.scale}",
+            scale=args.scale)
+        print(f"  train samples: {len(train_set)}, valid samples: {len(val_set)}")
+
+    else:  # jhtdb
         from dataset import TurbulencePatchDataset
         train_set = TurbulencePatchDataset("./data", "train", args.n_train, args.scale)
         val_set = TurbulencePatchDataset("./data", "valid", args.n_valid, args.scale)
@@ -291,7 +371,7 @@ def main():
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
-    if args.data_source == "wang":
+    if args.data_source in ("wang", "deeprock"):
         weights = dict(w_U=1.0, w_dU=0.0, w_continuity=0.0,
                        w_omega=0.0, w_enstrophy=0.0, w_strain=0.0)
     else:
@@ -300,7 +380,8 @@ def main():
     train(model, train_loader, val_loader, optimizer, args.iterations,
           weights, device, args.log_path, args.checkpoint_dir,
           val_every=args.val_every, checkpoint_every=args.checkpoint_every,
-          log_every=args.log_every, val_batches=args.val_batches)
+          log_every=args.log_every, val_batches=args.val_batches,
+          loss_type=args.loss_type)
 
 
 if __name__ == "__main__":

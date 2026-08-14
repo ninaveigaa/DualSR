@@ -91,24 +91,42 @@ class DualEDSR(nn.Module):
     canonical convention before the tensor reaches the model.
     """
 
-    def __init__(self, scale=4, base_filters=64, n_res_blocks=16, in_channels=3):
+    def __init__(self, scale=4, base_filters=64, n_res_blocks=16, in_channels=3,
+                 symmetric_z=False):
         """
-        Matches the original TensorFlow DualEDSR (Wang et al.) exactly:
-        the XY stage uses the full base_filters/n_res_blocks, while the
-        Z stage uses HALF of both (fewer filters, fewer residual blocks),
-        since it only needs to resolve the remaining axis using the
-        already-upsampled Y neighborhood as spatial context.
+        Matches the original TensorFlow DualEDSR (Wang et al.) exactly
+        when symmetric_z=False (the default): the XY stage uses the
+        full base_filters/n_res_blocks, while the Z stage uses HALF of
+        both (fewer filters, fewer residual blocks), since it only
+        needs to resolve the remaining axis using the already-upsampled
+        Y neighborhood as spatial context.
 
         Defaults (base_filters=64, n_res_blocks=16) match the original
         code's argument defaults (args.ngsrf=64, args.numResBlocks=16),
-        giving SRz base_filters=32, n_res_blocks=8.
+        giving SRz base_filters=32, n_res_blocks=8 when symmetric_z=False.
+
+        symmetric_z=True: gives the Z stage the SAME capacity as the XY
+        stage (base_filters, n_res_blocks unchanged, no //2). This is a
+        deliberate deviation from Wang et al.'s original design, added
+        to test whether the asymmetric-capacity split is responsible
+        for the disproportionate PSNR drop observed between the XY-only
+        stage and the final XYZ output (see project logbook, Milestone
+        16/17 diagnostic: val_psnr_xy ~29.7-30.0 dB vs. val_psnr_xyz
+        ~26.5-27.8 dB, a 2.2-3.1 dB drop attributed to the Z stage).
+        Roughly doubles parameter count and compute cost relative to
+        symmetric_z=False.
         """
         super().__init__()
         self.scale = scale
         self.in_channels = in_channels
+        self.symmetric_z = symmetric_z
 
-        srz_filters = base_filters // 2
-        srz_blocks = max(n_res_blocks // 2, 1)
+        if symmetric_z:
+            srz_filters = base_filters
+            srz_blocks = n_res_blocks
+        else:
+            srz_filters = base_filters // 2
+            srz_blocks = max(n_res_blocks // 2, 1)
 
         self.srxy = EDSR2D(in_channels=in_channels, base_filters=base_filters,
                             n_res_blocks=n_res_blocks,
@@ -144,24 +162,14 @@ class DualEDSR(nn.Module):
 
 if __name__ == "__main__":
     # sanity check with dummy tensors -- no real data required
-    # uses the same defaults as Wang et al.'s original TF model
-    # (scale=4, base_filters=64, n_res_blocks=16), so the printed
-    # parameter count can be directly compared against the reference
-    # TF value (SRxy=1,293,697 SRz=176,321 total=1,470,018 for
-    # in_channels=1; counts differ slightly here due to in_channels=3).
     scale = 4
     B, C, Nx, Ny, Nz = 1, 3, 32, 32, 32  # LR input size
 
-    model = DualEDSR(scale=scale, base_filters=64, n_res_blocks=16, in_channels=C)
-    lr_dummy = torch.randn(B, C, Nx, Ny, Nz)
-
-    pred_xy, pred_xyz = model(lr_dummy)
-
-    print("Input (LR):      ", lr_dummy.shape)
-    print("Stage 1 output:  ", pred_xy.shape,
-          "-- expected:", (B, C, Nx * scale, Ny * scale, Nz))
-    print("Stage 2 output:  ", pred_xyz.shape,
-          "-- expected:", (B, C, Nx * scale, Ny * scale, Nz * scale))
-
-    n_params = sum(p.numel() for p in model.parameters())
-    print(f"Total parameters: {n_params:,}")
+    for symmetric_z in (False, True):
+        model = DualEDSR(scale=scale, base_filters=64, n_res_blocks=16,
+                          in_channels=C, symmetric_z=symmetric_z)
+        lr_dummy = torch.randn(B, C, Nx, Ny, Nz)
+        pred_xy, pred_xyz = model(lr_dummy)
+        n_params = sum(p.numel() for p in model.parameters())
+        print(f"symmetric_z={symmetric_z}: pred_xy={tuple(pred_xy.shape)}, "
+              f"pred_xyz={tuple(pred_xyz.shape)}, params={n_params:,}")
