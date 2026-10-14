@@ -57,6 +57,7 @@ GRID_SIZE = 1024
 DT = 0.04  # time between stored snapshots
 N_SNAPSHOTS = 1012
 DEFAULT_TIMES = (4, 9, 14, 20, 27, 36)
+TESTING_TOKEN = "edu.jhu.pha.turbulence.testing-201406"
 
 # number of values per grid point for each JHTDB variable
 VARIABLE_COMPONENTS = {"density": 1, "pressure": 1, "velocity": 3}
@@ -117,7 +118,23 @@ def fetch_block(dataset, variable, component, t_index, x0, y0, z0, size,
             time.sleep(wait)
 
 
-def create_file(path, n_crops, crop_size, lr_size, variable_spec, times, scale):
+def crop_positions(n_per_axis, crops_per_volume, seed, ti):
+    """
+    Grid positions (ix, iy, iz) of the crops taken from volume number ti.
+    All positions when crops_per_volume is None; otherwise a seeded random
+    subset, different for each volume (more spatial variety).
+    """
+    allpos = [(ix, iy, iz) for ix in range(n_per_axis)
+              for iy in range(n_per_axis) for iz in range(n_per_axis)]
+    if crops_per_volume is None or crops_per_volume >= len(allpos):
+        return allpos
+    rng = np.random.default_rng(seed + ti)
+    pick = sorted(rng.choice(len(allpos), size=crops_per_volume, replace=False))
+    return [allpos[i] for i in pick]
+
+
+def create_file(path, n_crops, crop_size, lr_size, variable_spec, times, scale,
+                crops_per_volume, crop_seed):
     with h5py.File(path, "w") as f:
         chunk = min(64, crop_size)
         f.create_dataset("hr", shape=(n_crops, crop_size, crop_size, crop_size),
@@ -127,15 +144,23 @@ def create_file(path, n_crops, crop_size, lr_size, variable_spec, times, scale):
         f.create_dataset("t", shape=(n_crops,), dtype="float64")
         f.create_dataset("t_index", shape=(n_crops,), dtype="int64")
         f.create_dataset("origin", shape=(n_crops, 3), dtype="int64")
-        # one flag per HR sub-block, so an interrupted run resumes cleanly
         f.attrs["variable"] = variable_spec
         f.attrs["scale"] = scale
         f.attrs["crop_size"] = crop_size
         f.attrs["times"] = np.asarray(times, dtype=np.float64)
+        f.attrs["crops_per_volume"] = -1 if crops_per_volume is None else crops_per_volume
+        f.attrs["crop_seed"] = crop_seed
         f.attrs["normalized"] = False
 
 
 def download_all(args, dataset_factory=None):
+    """
+    dataset_factory: callable returning a givernylocal turb_dataset. Each
+    download thread gets its own (getCutout mutates the dataset object).
+    """
+    import threading
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     variable, component = parse_variable(args.variable)
     times = list(args.times)
     crop = args.crop_size
@@ -145,58 +170,79 @@ def download_all(args, dataset_factory=None):
     if crop % sub != 0:
         raise ValueError("--block_size must divide --crop_size")
     n_sub = crop // sub
-    n_crops = len(times) * n_per_axis ** 3
+    cpv = args.crops_per_volume
+    plan = [(ti, t, pos) for ti, t in enumerate(times)
+            for pos in crop_positions(n_per_axis, cpv, args.crop_seed, ti)]
+    n_crops = len(plan)
 
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     if not os.path.exists(args.out):
         create_file(args.out, n_crops, crop, lr_size, args.variable, times,
-                    args.scale)
+                    args.scale, cpv, args.crop_seed)
 
-    with h5py.File(args.out, "a") as f:
+    if dataset_factory is None:
+        dataset_factory = lambda: make_dataset(args.token, args.cache_dir)
+    local = threading.local()
+
+    def fetch(t_index, x, y, z):
+        if not hasattr(local, "dataset"):
+            local.dataset = dataset_factory()
+        return fetch_block(local.dataset, variable, component, t_index, x, y, z, sub)
+
+    # a large chunk cache, so many small block writes do not re-read chunks
+    with h5py.File(args.out, "a", rdcc_nbytes=512 * 1024 ** 2) as f, \
+            ThreadPoolExecutor(max_workers=args.workers) as pool:
+        stored_cpv = int(f.attrs.get("crops_per_volume", -1))
         if f.attrs["variable"] != args.variable or \
                 list(f.attrs["times"]) != [float(t) for t in times] or \
-                f.attrs["crop_size"] != crop:
+                f.attrs["crop_size"] != crop or \
+                stored_cpv != (-1 if cpv is None else cpv) or \
+                int(f.attrs.get("crop_seed", args.crop_seed)) != args.crop_seed:
             raise ValueError(f"{args.out} was created with different settings; "
                              f"delete it or choose another --out.")
         if f.attrs["normalized"]:
             print("File is already complete and normalized; nothing to do.")
             return
+        if "done" in f and f["done"].shape[1] != n_sub:
+            raise ValueError(f"{args.out} was started with a different --block_size; "
+                             f"use the same value to resume.")
         done = f.require_dataset("done", shape=(n_crops, n_sub, n_sub, n_sub),
                                  dtype="bool", fillvalue=False)
 
-        dataset = None  # created lazily, only if something is left to fetch
+        print(f"{n_crops} crops of {crop}^3 ({len(times)} volumes x "
+              f"{n_crops // len(times)} crops), requests of {sub}^3, "
+              f"{args.workers} parallel downloads", flush=True)
         t_start = time.time()
-        for ti, t in enumerate(times):
+        for n, (ti, t, (ix, iy, iz)) in enumerate(plan):
             t_index = time_to_index(t)
-            for ix in range(n_per_axis):
-                for iy in range(n_per_axis):
-                    for iz in range(n_per_axis):
-                        n = ((ti * n_per_axis + ix) * n_per_axis + iy) * n_per_axis + iz
-                        x0, y0, z0 = ix * crop, iy * crop, iz * crop
-                        f["t"][n] = t
-                        f["t_index"][n] = t_index
-                        f["origin"][n] = (x0, y0, z0)
-                        if done[n].all():
-                            continue
-                        if dataset is None:
-                            dataset = (dataset_factory() if dataset_factory
-                                       else make_dataset(args.token, args.cache_dir))
-                        for a in range(n_sub):
-                            for b in range(n_sub):
-                                for c in range(n_sub):
-                                    if done[n, a, b, c]:
-                                        continue
-                                    block = fetch_block(
-                                        dataset, variable, component, t_index,
-                                        x0 + a * sub, y0 + b * sub, z0 + c * sub, sub)
-                                    f["hr"][n, a*sub:(a+1)*sub, b*sub:(b+1)*sub,
-                                            c*sub:(c+1)*sub] = block
-                                    done[n, a, b, c] = True
-                        f.flush()
-                        elapsed = time.time() - t_start
-                        print(f"[t={t:g} idx={t_index}] crop {n + 1}/{n_crops} "
-                              f"origin=({x0},{y0},{z0}) done | {elapsed / 60:.1f} min",
-                              flush=True)
+            x0, y0, z0 = ix * crop, iy * crop, iz * crop
+            f["t"][n] = t
+            f["t_index"][n] = t_index
+            f["origin"][n] = (x0, y0, z0)
+            done_n = done[n]
+            todo = [(a, b, c) for a in range(n_sub) for b in range(n_sub)
+                    for c in range(n_sub) if not done_n[a, b, c]]
+            if not todo:
+                continue
+            futures = {pool.submit(fetch, t_index, x0 + a * sub, y0 + b * sub,
+                                   z0 + c * sub): (a, b, c) for a, b, c in todo}
+            t_crop = time.time()
+            for k, fut in enumerate(as_completed(futures), 1):
+                a, b, c = futures[fut]
+                block = fut.result()  # re-raises a download error
+                f["hr"][n, a*sub:(a+1)*sub, b*sub:(b+1)*sub, c*sub:(c+1)*sub] = block
+                done_n[a, b, c] = True
+                if k % 256 == 0 or k == len(todo):
+                    done[n] = done_n  # checkpoint progress for resuming
+                    f.flush()
+                    rate = k / (time.time() - t_crop)
+                    print(f"    crop {n + 1}: {k}/{len(todo)} blocks "
+                          f"({rate:.1f} blocks/s)", flush=True)
+            elapsed = time.time() - t_start
+            left = (n_crops - n - 1) * (time.time() - t_crop)
+            print(f"[t={t:g} idx={t_index}] crop {n + 1}/{n_crops} "
+                  f"origin=({x0},{y0},{z0}) done | {elapsed / 60:.1f} min elapsed, "
+                  f"~{left / 60:.0f} min left", flush=True)
 
 
 def finalize(path, scale):
@@ -256,15 +302,30 @@ def main():
                    help="physical times of the snapshots to use")
     p.add_argument("--crop_size", type=int, default=256)
     p.add_argument("--scale", type=int, default=4)
-    p.add_argument("--block_size", type=int, default=128,
-                   help="edge of each download request; givernylocal works "
-                        "best up to ~200^3 per request")
-    p.add_argument("--token", default=os.environ.get("JHTDB_TOKEN",
-                                                    "edu.jhu.pha.turbulence.testing-201406"))
+    p.add_argument("--block_size", type=int, default=None,
+                   help="edge of each download request. Default: 128 with a "
+                        "personal token, 16 with the public testing token "
+                        "(which allows at most 4096 points per request)")
+    p.add_argument("--crops_per_volume", type=int, default=None,
+                   help="take only this many crops per volume (seeded random "
+                        "subset of the 4x4x4 grid). Default: all 64")
+    p.add_argument("--crop_seed", type=int, default=0)
+    p.add_argument("--workers", type=int, default=8,
+                   help="parallel download requests")
+    p.add_argument("--token", default=os.environ.get("JHTDB_TOKEN", TESTING_TOKEN))
     p.add_argument("--cache_dir", default="./giverny_output")
     p.add_argument("--finalize_only", action="store_true",
                    help="skip downloading; only scale and build the LR crops")
     args = p.parse_args()
+
+    if args.block_size is None:
+        args.block_size = 16 if args.token == TESTING_TOKEN else 128
+    if args.token == TESTING_TOKEN and args.block_size ** 3 > 4096:
+        raise ValueError("the public testing token allows at most 4096 points "
+                         "per request: use --block_size 16 (or a personal token)")
+    if args.token == TESTING_TOKEN:
+        print("NOTE: using the public testing token (16^3 requests). For the "
+              "full dataset, request a personal token and set JHTDB_TOKEN.")
 
     if GRID_SIZE % args.crop_size != 0 or args.crop_size % args.scale != 0:
         raise ValueError("crop_size must divide 1024 and be divisible by scale")

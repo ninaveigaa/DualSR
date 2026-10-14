@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # DualEDSR on JHTDB mixing, LR patch 32^3 (HR 128^3), 1 x GH200.
+# Optional: ITERATIONS=30000 MIXING_H5=data/... sbatch ... to override.
 # Submit from the repo root:
 #     sbatch -A <project>-gpu slurm/arrhenius/run_dualedsr_mixing.sh
 # No `-N`: on Arrhenius it allocates (and bills) the whole 4-GPU node.
@@ -20,12 +21,12 @@ source venv-gpu/bin/activate
 python -u src/train.py \
     --model_type dualedsr \
     --data_source jhtdb_mixing \
-    --mixing_h5 data/jhtdb_mixing/mixing_density.h5 \
+    --mixing_h5 ${MIXING_H5:-data/jhtdb_mixing/mixing_density.h5} \
     --train_times 4 9 14 20 27 \
     --val_times 36 \
     --patches_per_crop 8 \
     --num_workers 8 \
-    --iterations 100000 \
+    --iterations ${ITERATIONS:-100000} \
     --val_every 1000 \
     --val_batches 64 \
     --checkpoint_every 5000 \
