@@ -20,6 +20,13 @@
 
 set -euo pipefail
 cd "$SLURM_SUBMIT_DIR"
+# Start clean: the job inherits the submitting shell's environment, which on
+# the (x86) login node may hold an x86 venv or CPU-only modules that cannot
+# run on the Arm GPU nodes.
+if [ -n "${VIRTUAL_ENV:-}" ]; then deactivate 2>/dev/null || true; fi
+module purge 2>/dev/null || true
+unset VIRTUAL_ENV PYTHONHOME PYTHONPATH
+export PATH="$(printf '%s' "$PATH" | tr ':' '\n' | grep -v -E '/venv|/software/sse2' | paste -sd: -)"
 
 echo "Architecture: $(uname -m)"
 # Modules visible on the GPU (Arm) nodes, for reference if something fails:
@@ -27,7 +34,10 @@ module avail 2>&1 | grep -i -E "python|pytorch|torch|cuda" || true
 # CPU-partition modules do not work here; use a GPU/ Python module if one is
 # available, otherwise fall back to the system python3.
 for m in $(module -t avail 2>&1 | grep -E "^GPU/.*Python/3" | sort -V | tail -1); do ml "$m" && echo "Loaded $m"; done
-python3 -m venv venv-gpu
+PY=$(command -v python3)
+echo "Using $PY ($($PY --version 2>&1))"
+rm -rf venv-gpu
+"$PY" -m venv venv-gpu
 source venv-gpu/bin/activate
 pip install --upgrade pip
 # CUDA 12.8 wheels exist for aarch64 (GH200)
