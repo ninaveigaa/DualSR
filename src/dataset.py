@@ -227,3 +227,94 @@ class DeepRockDataset(torch.utils.data.Dataset):
                              stride=(1, 1, self.scale)).squeeze(0)
 
         return {"lr": lr, "hr_z": hr_z, "hr": hr, "axis_mode": 0}
+
+
+class JHTDBMixingDataset(torch.utils.data.Dataset):
+    """
+    HR/LR pairs from the JHTDB "mixing" dataset, built by
+    src/build_mixing_dataset.py (one HDF5 file, 256^3 HR crops and
+    64^3 LR crops, single channel, globally scaled to [0, 1]).
+
+    Each snapshot is treated as a static 3D greyscale image, as in
+    micro-CT, so (like DeepRock) only the w_U reconstruction loss is
+    meaningful -- the physics terms assume a 3-component velocity field.
+
+    The train / validation split is done BY VOLUME (snapshot time), not
+    by crop: crops of the same snapshot share most of their content, so
+    a crop-level split would leak the validation set into training.
+
+    Training (random_crop=True): every __getitem__ crops a random
+    patch_size_lr^3 LR patch (and the matching HR / HR_z patches) from a
+    random crop of the selected volumes. len() = n_crops * patches_per_crop.
+
+    Validation (random_crop=False): a FIXED set of patches (seeded), so
+    validation numbers are comparable across runs and iterations.
+
+    patch_size_lr=None uses the full 64^3 LR crop (256^3 HR).
+    """
+
+    def __init__(self, h5_path, times, scale=4, patch_size_lr=32,
+                 patches_per_crop=8, random_crop=True, seed=0):
+        self.h5_path = h5_path
+        self.scale = scale
+        self.random_crop = random_crop
+        self._file = None  # opened lazily (one handle per DataLoader worker)
+
+        with h5py.File(h5_path, "r") as f:
+            if not f.attrs.get("normalized", False):
+                raise RuntimeError(f"{h5_path} is not finalized yet; run "
+                                   f"src/build_mixing_dataset.py to completion.")
+            if int(f.attrs["scale"]) != scale:
+                raise ValueError(f"{h5_path} was built for scale "
+                                 f"{f.attrs['scale']}, not {scale}.")
+            all_t = f["t"][()]
+            lr_size = f["lr"].shape[1]
+
+        wanted = np.asarray(times, dtype=np.float64)
+        self.indices = np.flatnonzero(np.isclose(all_t[:, None], wanted[None, :]).any(axis=1))
+        missing = [t for t in wanted if not np.isclose(all_t, t).any()]
+        if missing:
+            raise ValueError(f"times {missing} are not in {h5_path} "
+                             f"(available: {sorted(set(all_t.tolist()))})")
+
+        p = lr_size if patch_size_lr is None else patch_size_lr
+        if p > lr_size:
+            raise ValueError(f"patch_size_lr={p} is larger than the LR crop ({lr_size}).")
+        self.p = p
+        self.lr_size = lr_size
+        self.patches_per_crop = patches_per_crop if p < lr_size else 1
+
+        # fixed (crop, x, y, z) list for validation
+        rng = np.random.default_rng(seed)
+        self.fixed = [(int(c), *(int(v) for v in rng.integers(0, lr_size - p + 1, size=3)))
+                      for c in self.indices for _ in range(self.patches_per_crop)]
+        # shuffled once, so that validating on only the first N batches
+        # (train.py --val_batches) still covers many different crops
+        rng.shuffle(self.fixed)
+
+    def __len__(self):
+        return len(self.indices) * self.patches_per_crop
+
+    def _h5(self):
+        if self._file is None:
+            self._file = h5py.File(self.h5_path, "r")
+        return self._file
+
+    def __getitem__(self, idx):
+        if self.random_crop:
+            crop = int(self.indices[idx // self.patches_per_crop])
+            x, y, z = (int(v) for v in torch.randint(0, self.lr_size - self.p + 1, (3,)))
+        else:
+            crop, x, y, z = self.fixed[idx]
+
+        p, s = self.p, self.scale
+        f = self._h5()
+        lr = torch.from_numpy(f["lr"][crop, x:x+p, y:y+p, z:z+p]).unsqueeze(0)
+        hr = torch.from_numpy(
+            f["hr"][crop, x*s:(x+p)*s, y*s:(y+p)*s, z*s:(z+p)*s]).unsqueeze(0)
+
+        # XY-resolved intermediate target: HR averaged along z only
+        hr_z = F.avg_pool3d(hr.unsqueeze(0), kernel_size=(1, 1, s),
+                            stride=(1, 1, s)).squeeze(0)
+
+        return {"lr": lr, "hr_z": hr_z, "hr": hr, "axis_mode": 0}
