@@ -30,7 +30,7 @@ from torch.utils.data import Dataset, DataLoader
 
 from DualEDSR_arch import DualEDSR
 from HATDualSR_arch import DualHAT
-from dataset import WangCTDataset, DeepRockDataset
+from dataset import WangCTDataset, DeepRockDataset, JHTDBMixingDataset
 from losses import dual_physics_loss, DEFAULT_PHYSICS_WEIGHTS
 
 
@@ -251,8 +251,8 @@ def main():
 
     # data / general
     parser.add_argument("--domain_size_lr", type=int, default=32,
-                         help="LR cube size. Only used by dummy/wang/jhtdb "
-                              "data sources.")
+                         help="LR cube size (LR patch edge for jhtdb_mixing). "
+                              "Not used by deeprock.")
     parser.add_argument("--scale", type=int, default=4)
     parser.add_argument("--n_train", type=int, default=200,
                          help="Only used by dummy/wang data sources "
@@ -270,7 +270,25 @@ def main():
                          help="Base reconstruction loss. 'l1' matches "
                               "Wang, Armstrong & Mostaghimi (2019) eq. 2.")
     parser.add_argument("--data_source", type=str, default="dummy",
-                         choices=["dummy", "wang", "deeprock", "jhtdb"])
+                         choices=["dummy", "wang", "deeprock", "jhtdb",
+                                  "jhtdb_mixing"])
+
+    # jhtdb_mixing-specific (built by src/build_mixing_dataset.py)
+    parser.add_argument("--mixing_h5", type=str,
+                         default="data/jhtdb_mixing/mixing_density.h5",
+                         help="[jhtdb_mixing] HDF5 file with the HR/LR pairs.")
+    parser.add_argument("--train_times", type=float, nargs="+",
+                         default=[4, 9, 14, 20, 27],
+                         help="[jhtdb_mixing] snapshot times used for training.")
+    parser.add_argument("--val_times", type=float, nargs="+", default=[36],
+                         help="[jhtdb_mixing] snapshot times held out for "
+                              "validation (split by volume, not by crop).")
+    parser.add_argument("--patches_per_crop", type=int, default=8,
+                         help="[jhtdb_mixing] patches drawn per 256^3 crop "
+                              "per epoch (training) / fixed patches per crop "
+                              "(validation).")
+    parser.add_argument("--num_workers", type=int, default=0,
+                         help="DataLoader worker processes.")
     parser.add_argument("--log_path", type=str,
                          default="outputs/logs/train_log.csv")
     parser.add_argument("--checkpoint_dir", type=str,
@@ -313,7 +331,8 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    in_channels = 1 if args.data_source in ("wang", "deeprock") else 3
+    single_channel = ("wang", "deeprock", "jhtdb_mixing")
+    in_channels = 1 if args.data_source in single_channel else 3
 
     if args.model_type == "dualedsr":
         model = DualEDSR(scale=args.scale, base_filters=args.base_filters,
@@ -361,17 +380,38 @@ def main():
             scale=args.scale)
         print(f"  train samples: {len(train_set)}, valid samples: {len(val_set)}")
 
+    elif args.data_source == "jhtdb_mixing":
+        print(f"NOTE: using JHTDB mixing (static volumes) from {args.mixing_h5}; "
+              f"train t={args.train_times}, valid t={args.val_times}, "
+              f"LR patch {args.domain_size_lr}^3.")
+        overlap = set(args.train_times) & set(args.val_times)
+        if overlap:
+            raise ValueError(f"times {sorted(overlap)} are in both train and valid")
+        train_set = JHTDBMixingDataset(
+            args.mixing_h5, args.train_times, scale=args.scale,
+            patch_size_lr=args.domain_size_lr,
+            patches_per_crop=args.patches_per_crop, random_crop=True)
+        val_set = JHTDBMixingDataset(
+            args.mixing_h5, args.val_times, scale=args.scale,
+            patch_size_lr=args.domain_size_lr,
+            patches_per_crop=args.patches_per_crop, random_crop=False)
+        print(f"  train patches/epoch: {len(train_set)}, valid patches: {len(val_set)}")
+
     else:  # jhtdb
         from dataset import TurbulencePatchDataset
         train_set = TurbulencePatchDataset("./data", "train", args.n_train, args.scale)
         val_set = TurbulencePatchDataset("./data", "valid", args.n_valid, args.scale)
 
-    train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True)
-    val_loader = DataLoader(val_set, batch_size=args.batch_size, shuffle=False)
+    train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True,
+                              num_workers=args.num_workers,
+                              persistent_workers=args.num_workers > 0)
+    val_loader = DataLoader(val_set, batch_size=args.batch_size, shuffle=False,
+                            num_workers=args.num_workers,
+                            persistent_workers=args.num_workers > 0)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
-    if args.data_source in ("wang", "deeprock"):
+    if args.data_source in single_channel:
         weights = dict(w_U=1.0, w_dU=0.0, w_continuity=0.0,
                        w_omega=0.0, w_enstrophy=0.0, w_strain=0.0)
     else:
