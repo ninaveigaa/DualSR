@@ -15,6 +15,13 @@
 
 set -euo pipefail
 cd "$SLURM_SUBMIT_DIR"
+# Start clean: the job inherits the submitting shell's environment, which on
+# the (x86) login node may hold an x86 venv or CPU-only modules that cannot
+# run on the Arm GPU nodes.
+if [ -n "${VIRTUAL_ENV:-}" ]; then deactivate 2>/dev/null || true; fi
+module purge 2>/dev/null || true
+unset VIRTUAL_ENV PYTHONHOME PYTHONPATH
+export PATH="$(printf '%s' "$PATH" | tr ':' '\n' | grep -v -E '/venv|/software/sse2' | paste -sd: -)"
 mkdir -p outputs/logs outputs/checkpoints
 source venv-gpu/bin/activate
 
