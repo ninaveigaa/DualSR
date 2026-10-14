@@ -32,6 +32,9 @@ Output HDF5 layout:
 
 Undo the scaling with:  raw = x * (global_max - global_min) + global_min
 
+Only needs numpy, h5py and givernylocal (no PyTorch), so it can run on
+CPU nodes.
+
 Usage (on a machine with JHTDB access):
     python src/build_mixing_dataset.py --out data/jhtdb_mixing/mixing_density.h5 \
         --variable density --token <your JHTDB token>
@@ -47,8 +50,6 @@ import argparse
 
 import numpy as np
 import h5py
-import torch
-import torch.nn.functional as F
 
 
 DATASET_TITLE = "mixing"
@@ -226,9 +227,9 @@ def finalize(path, scale):
         for n in range(n_crops):
             x = (hr[n] - gmin) / span
             hr[n] = x
-            lr = F.avg_pool3d(torch.from_numpy(x)[None, None],
-                              kernel_size=scale, stride=scale)[0, 0]
-            f["lr"][n] = lr.numpy()
+            c = x.shape[0] // scale
+            lr = x.reshape(c, scale, c, scale, c, scale).mean(axis=(1, 3, 5))
+            f["lr"][n] = lr.astype(np.float32)
 
         f.attrs["global_min"] = gmin
         f.attrs["global_max"] = gmax
