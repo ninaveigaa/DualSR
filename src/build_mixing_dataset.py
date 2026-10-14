@@ -227,17 +227,27 @@ def download_all(args, dataset_factory=None):
             futures = {pool.submit(fetch, t_index, x0 + a * sub, y0 + b * sub,
                                    z0 + c * sub): (a, b, c) for a, b, c in todo}
             t_crop = time.time()
-            for k, fut in enumerate(as_completed(futures), 1):
-                a, b, c = futures[fut]
-                block = fut.result()  # re-raises a download error
-                f["hr"][n, a*sub:(a+1)*sub, b*sub:(b+1)*sub, c*sub:(c+1)*sub] = block
-                done_n[a, b, c] = True
-                if k % 256 == 0 or k == len(todo):
-                    done[n] = done_n  # checkpoint progress for resuming
-                    f.flush()
-                    rate = k / (time.time() - t_crop)
-                    print(f"    crop {n + 1}: {k}/{len(todo)} blocks "
-                          f"({rate:.1f} blocks/s)", flush=True)
+            try:
+                completed = as_completed(futures)
+                for k, fut in enumerate(completed, 1):
+                    a, b, c = futures[fut]
+                    block = fut.result()  # re-raises a download error
+                    f["hr"][n, a*sub:(a+1)*sub, b*sub:(b+1)*sub, c*sub:(c+1)*sub] = block
+                    done_n[a, b, c] = True
+                    if k % 256 == 0 or k == len(todo):
+                        done[n] = done_n  # checkpoint progress for resuming
+                        f.flush()
+                        rate = k / (time.time() - t_crop)
+                        print(f"    crop {n + 1}: {k}/{len(todo)} blocks "
+                              f"({rate:.1f} blocks/s)", flush=True)
+            except BaseException:
+                # give up on the queued requests so the script stops quickly;
+                # everything written so far is kept and resumes on the next run
+                for other in futures:
+                    other.cancel()
+                done[n] = done_n
+                f.flush()
+                raise
             elapsed = time.time() - t_start
             left = (n_crops - n - 1) * (time.time() - t_crop)
             print(f"[t={t:g} idx={t_index}] crop {n + 1}/{n_crops} "
@@ -285,6 +295,42 @@ def finalize(path, scale):
     print(f"Finalized {path}: {n_crops} HR/LR pairs scaled to [0, 1].")
 
 
+def finalize_partial(src, dst, scale):
+    """
+    Plan B when the download cannot finish: copy only the crops whose
+    download is complete from `src` into a new file `dst`, then scale and
+    build the LR crops there (same as finalize). `src` is left untouched,
+    so the full download can still be resumed later.
+    """
+    with h5py.File(src, "r") as f:
+        if f.attrs["normalized"]:
+            raise RuntimeError(f"{src} is already complete; use it directly.")
+        done = f["done"][()]
+        complete = [n for n in range(done.shape[0]) if done[n].all()]
+        if not complete:
+            raise RuntimeError("No complete crop yet.")
+        crop = int(f.attrs["crop_size"])
+        lr_size = crop // scale
+        times_done = sorted(set(float(f["t"][n]) for n in complete))
+        os.makedirs(os.path.dirname(os.path.abspath(dst)), exist_ok=True)
+        create_file(dst, len(complete), crop, lr_size, f.attrs["variable"],
+                    times_done, scale, -1, int(f.attrs.get("crop_seed", 0)))
+        with h5py.File(dst, "a") as g:
+            for i, n in enumerate(complete):
+                g["hr"][i] = f["hr"][n]
+                g["t"][i] = f["t"][n]
+                g["t_index"][i] = f["t_index"][n]
+                g["origin"][i] = f["origin"][n]
+            g.attrs["partial_of"] = os.path.abspath(src)
+    counts = {}
+    with h5py.File(dst, "r") as g:
+        for t in g["t"][()]:
+            counts[float(t)] = counts.get(float(t), 0) + 1
+    print(f"Copied {len(complete)} complete crops: " +
+          ", ".join(f"t={t:g}: {c}" for t, c in sorted(counts.items())))
+    finalize(dst, scale)
+
+
 def make_dataset(token, cache_dir):
     from givernylocal.turbulence_dataset import turb_dataset
     os.makedirs(cache_dir, exist_ok=True)
@@ -314,6 +360,10 @@ def main():
                    help="parallel download requests")
     p.add_argument("--token", default=os.environ.get("JHTDB_TOKEN", TESTING_TOKEN))
     p.add_argument("--cache_dir", default="./giverny_output")
+    p.add_argument("--partial_out", default=None,
+                   help="plan B: write only the crops downloaded so far to this "
+                        "new file (scaled, with LR) and exit; --out is kept "
+                        "as is so the download can be resumed")
     p.add_argument("--finalize_only", action="store_true",
                    help="skip downloading; only scale and build the LR crops")
     args = p.parse_args()
@@ -330,6 +380,9 @@ def main():
     if GRID_SIZE % args.crop_size != 0 or args.crop_size % args.scale != 0:
         raise ValueError("crop_size must divide 1024 and be divisible by scale")
 
+    if args.partial_out:
+        finalize_partial(args.out, args.partial_out, args.scale)
+        return
     if not args.finalize_only:
         download_all(args)
     finalize(args.out, args.scale)
