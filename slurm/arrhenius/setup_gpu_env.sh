@@ -18,7 +18,8 @@
 #SBATCH -o slurm/logs/setup_gpu_%j.out
 #SBATCH -e slurm/logs/setup_gpu_%j.err
 
-set -euo pipefail
+set -eo pipefail  # no -u: Lmod module functions use unset variables
+type ml >/dev/null 2>&1 || source /etc/profile >/dev/null 2>&1 || true
 cd "$SLURM_SUBMIT_DIR"
 # Start clean: the job inherits the submitting shell's environment, which on
 # the (x86) login node may hold an x86 venv or CPU-only modules that cannot
@@ -33,16 +34,19 @@ echo "Architecture: $(uname -m)"
 module avail 2>&1 | grep -i -E "python|pytorch|torch|cuda" || true
 # CPU-partition modules do not work here; use a GPU/ Python module if one is
 # available, otherwise fall back to the system python3.
-for m in $(module -t avail 2>&1 | grep -E "^GPU/.*Python/3" | sort -V | tail -1); do ml "$m" && echo "Loaded $m"; done
+GPU_PY_MOD="$(module -t avail 2>&1 | grep -E '^GPU/.*Python/3' | sort -V | tail -1 || true)"
+if [ -n "$GPU_PY_MOD" ]; then ml "$GPU_PY_MOD" && echo "Loaded $GPU_PY_MOD"; fi
 PY=$(command -v python3)
 echo "Using $PY ($($PY --version 2>&1))"
 rm -rf venv-gpu
 "$PY" -m venv venv-gpu
+printf '%s\n' "${GPU_PY_MOD:-}" > venv-gpu/.module
 source venv-gpu/bin/activate
 pip install --upgrade pip
 # CUDA 12.8 wheels exist for aarch64 (GH200)
 pip install torch --index-url https://download.pytorch.org/whl/cu128
 pip install numpy h5py einops pandas matplotlib givernylocal
+python -c "import numpy, h5py, einops" && echo "numpy/h5py/einops OK"
 
 python - <<'PY'
 import torch
