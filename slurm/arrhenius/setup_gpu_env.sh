@@ -22,6 +22,11 @@ set -euo pipefail
 cd "$SLURM_SUBMIT_DIR"
 
 echo "Architecture: $(uname -m)"
+# Modules visible on the GPU (Arm) nodes, for reference if something fails:
+module avail 2>&1 | grep -i -E "python|pytorch|torch|cuda" || true
+# CPU-partition modules do not work here; use a GPU/ Python module if one is
+# available, otherwise fall back to the system python3.
+for m in $(module -t avail 2>&1 | grep -E "^GPU/.*Python/3" | sort -V | tail -1); do ml "$m" && echo "Loaded $m"; done
 python3 -m venv venv-gpu
 source venv-gpu/bin/activate
 pip install --upgrade pip

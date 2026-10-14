@@ -14,7 +14,7 @@ Scripts for the JHTDB mixing dataset on Arrhenius. Differences from Alvis:
 ## Steps (from the repo root, e.g. /nobackup/proj/disk/<project>/DualSR)
 
     mkdir -p slurm/logs
-    bash slurm/arrhenius/setup_cpu_env.sh                      # once, login node
+    bash slurm/arrhenius/setup_cpu_env.sh                      # once, login node (loads the Python module)
     sbatch -A <project>-gpu slurm/arrhenius/setup_gpu_env.sh   # once; check log says CUDA available: True
 
     export JHTDB_TOKEN=<your token>
