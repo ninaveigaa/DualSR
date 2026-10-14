@@ -10,3 +10,7 @@ __pycache__/
 wandb/
 *.log
 venv/
+venv-cpu/
+venv-gpu/
+giverny_output/
+*.h5
