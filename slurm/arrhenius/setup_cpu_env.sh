@@ -4,8 +4,10 @@
 #     bash slurm/arrhenius/setup_cpu_env.sh
 set -euo pipefail
 
-python3 -m venv venv-cpu
+# Arrhenius has no `python` until a Python module is loaded
+ml Python/3.13.5-bundle-SciPy-2025.07-mpi4py-4.1.0-gcc-2025b-eb
+python -m venv --system-site-packages venv-cpu
 source venv-cpu/bin/activate
 pip install --upgrade pip
-pip install numpy h5py givernylocal
+pip install h5py givernylocal
 python -c "import numpy, h5py, givernylocal; print('venv-cpu OK')"

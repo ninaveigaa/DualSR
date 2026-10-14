@@ -17,6 +17,7 @@
 
 set -euo pipefail
 cd "$SLURM_SUBMIT_DIR"
+ml Python/3.13.5-bundle-SciPy-2025.07-mpi4py-4.1.0-gcc-2025b-eb
 source venv-cpu/bin/activate
 mkdir -p data/jhtdb_mixing
 
