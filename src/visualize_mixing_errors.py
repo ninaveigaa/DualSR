@@ -64,7 +64,13 @@ def main():
     vmin, vmax = float(hr[:, :, z].min()), float(hr[:, :, z].max())
 
     k = len(preds)
-    fig, axes = plt.subplots(2, k + 1, figsize=(3.1 * (k + 1), 7.3), facecolor=BG)
+    near = np.repeat(np.repeat(np.repeat(lr, 4, 0), 4, 1), 4, 2)
+    fig, axes = plt.subplots(2, k + 2, figsize=(3.1 * (k + 2), 7.3), facecolor=BG)
+    axes[0, 0].imshow(near[:, :, z].T, cmap="gray", vmin=vmin, vmax=vmax, origin="lower")
+    axes[0, 0].set_title("LR input\n(64³, block mean)", fontsize=11, color=INK)
+    axes[1, 0].axis("off")
+    axes_all = axes
+    axes = axes[:, 1:]
     print(f"crop {n}, t = {a.time:g}")
     for c, (name, v) in enumerate(preds.items()):
         mae = float(errs[name].mean())
@@ -78,11 +84,11 @@ def main():
     axes[1, k].axis("off")
     cb = fig.colorbar(im, ax=axes[1, k], fraction=0.5, pad=0.0, location="left")
     cb.set_label("absolute error (scaled density, [0, 1])", color=SOFT, fontsize=10)
-    for ax in axes.ravel():
+    for ax in axes_all.ravel():
         ax.set_xticks([]); ax.set_yticks([])
         for s in ax.spines.values():
             s.set_color("#D5D9E0")
-    axes[0, 0].set_ylabel(f"t = {a.time:g}\nvalidation volume", fontsize=11, color=INK)
+    axes_all[0, 0].set_ylabel(f"t = {a.time:g}\nvalidation volume", fontsize=11, color=INK)
     axes[1, 0].set_ylabel("absolute error", fontsize=11, color=INK)
     fig.text(0.01, 0.01, f"Density, XY slice through the middle of a 256³ crop of the validation volume "
              f"(never seen in training). Error colour scale shared; PSNR and MAE over the whole 3D crop.",
