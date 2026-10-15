@@ -45,7 +45,7 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--edsr", default=newest("outputs/logs/dualedsr_mixing_*.csv"))
     p.add_argument("--hat", default=newest("outputs/logs/dualhat_mixing_*.csv"))
-    p.add_argument("--out", default="mixing_curves.png")
+    p.add_argument("--out", default="mixing_curves_v2.png")
     args = p.parse_args()
 
     runs = {k: v for k, v in (("DualEDSR", args.edsr), ("DualHAT", args.hat)) if v}
@@ -57,23 +57,27 @@ def main():
                          "xtick.color": SOFT, "ytick.color": SOFT, "text.color": INK})
     fig, (ax_l, ax_p) = plt.subplots(1, 2, figsize=(13, 4.8), facecolor="#FBFBF9")
 
-    print(f"{'model':<9} {'iters':>7} {'best val PSNR':>14} {'last val PSNR':>14} "
-          f"{'last train PSNR':>16} {'time':>7}")
+    print(f"{'model':<9} {'iters':>7} {'val PSNR, last 10 evals':>24} "
+          f"{'train PSNR (end)':>17} {'time':>7}")
     for name, path in runs.items():
         df, val = load(path)
         c = MODELS[name]
         n = max(1, len(df) // 50)
         ax_l.plot(df["iteration"], smooth(df["train_loss_xyz"], n), color=c, alpha=0.35,
                   lw=1.2, label=f"{name} train")
-        ax_l.plot(val["iteration"], val["val_loss_xyz"], color=c, lw=2.2, marker="o",
-                  ms=3, label=f"{name} validation")
+        ax_l.plot(val["iteration"], val["val_loss_xyz"], color=c, lw=0.8, alpha=0.35)
+        ax_l.plot(val["iteration"], smooth(val["val_loss_xyz"], 5), color=c, lw=2.4,
+                  label=f"{name} validation (5-eval mean)")
         ax_p.plot(df["iteration"], smooth(df["train_psnr_xyz"], n), color=c, alpha=0.35,
                   lw=1.2, label=f"{name} train")
-        ax_p.plot(val["iteration"], val["val_psnr_xyz"], color=c, lw=2.2, marker="o",
-                  ms=3, label=f"{name} validation")
+        ax_p.plot(val["iteration"], val["val_psnr_xyz"], color=c, lw=0.8, alpha=0.35,
+                  marker="o", ms=2)
+        ax_p.plot(val["iteration"], smooth(val["val_psnr_xyz"], 5), color=c, lw=2.4,
+                  label=f"{name} validation (5-eval mean)")
+        last = val["val_psnr_xyz"].tail(10)
         print(f"{name:<9} {int(df['iteration'].iloc[-1]):>7} "
-              f"{val['val_psnr_xyz'].max():>11.2f} dB {val['val_psnr_xyz'].iloc[-1]:>11.2f} dB "
-              f"{smooth(df['train_psnr_xyz'], n).iloc[-1]:>13.2f} dB "
+              f"{last.mean():>14.1f} ± {last.std():.1f} dB "
+              f"{smooth(df['train_psnr_xyz'], n).iloc[-1]:>13.1f} dB "
               f"{df['elapsed_s'].iloc[-1] / 3600:>5.1f} h")
 
     for ax, title, ylabel in ((ax_l, "L1 loss (XYZ stage)", "L1 loss"),
@@ -88,7 +92,8 @@ def main():
     ax_l.set_yscale("log")
     ax_p.legend(frameon=False, fontsize=10, loc="lower right")
     fig.text(0.01, 0.01, "Reduced subset: 12 pairs (10 train, 2 validation); "
-             "train curves smoothed, validation every 1000 iterations",
+             "train curves smoothed; validation (t = 36, 2 crops) every 1000 iterations, "
+             "thin = raw, bold = 5-evaluation mean",
              fontsize=10, color=SOFT)
     fig.tight_layout(rect=(0, 0.04, 1, 1))
     fig.savefig(args.out, dpi=200)
