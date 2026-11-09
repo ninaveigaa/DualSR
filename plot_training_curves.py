@@ -1,3 +1,13 @@
+"""
+Training curves of DualEDSR (top row) and DualHAT (bottom row).
+
+    python plot_training_curves.py                       # default CSVs below
+    python plot_training_curves.py --edsr A.csv --hat B.csv --out curves.png
+"""
+import argparse
+
+import matplotlib
+matplotlib.use("Agg")  # no display needed (cluster login / compute nodes)
 import matplotlib.pyplot as plt
 import pandas as pd
 
@@ -85,8 +95,15 @@ def plot_time_memory(ax, df):
         spine.set_visible(False)
 
 def main():
-    edsr_df = pd.read_csv(EDSR_CSV)
-    hat_df = pd.read_csv(HAT_CSV)
+    p = argparse.ArgumentParser(description=__doc__,
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--edsr", default=EDSR_CSV, help="DualEDSR training log CSV")
+    p.add_argument("--hat", default=HAT_CSV, help="DualHAT training log CSV")
+    p.add_argument("--out", default="dualedsr_vs_dualhat_training_curves.png")
+    args = p.parse_args()
+
+    edsr_df = pd.read_csv(args.edsr)
+    hat_df = pd.read_csv(args.hat)
 
     fig, axes = plt.subplots(2, 3, figsize=(15, 8))
     fig.patch.set_facecolor(BG_SLIDE)
@@ -109,9 +126,8 @@ def main():
 
     fig.tight_layout(rect=[0.06, 0.02, 0.98, 0.98], h_pad=4, w_pad=2.5)
 
-    fig.savefig("dualedsr_vs_dualhat_training_curves.png", dpi=200,
-                facecolor=BG_SLIDE, edgecolor=BG_SLIDE)
-    print("Saved: dualedsr_vs_dualhat_training_curves.png")
+    fig.savefig(args.out, dpi=200, facecolor=BG_SLIDE, edgecolor=BG_SLIDE)
+    print(f"Saved: {args.out}")
 
 if __name__ == "__main__":
     main()
