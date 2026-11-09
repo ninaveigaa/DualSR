@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # DualEDSR on JHTDB mixing, LR patch 32^3 (HR 128^3), 1 x GH200.
-# Optional overrides at submit time: ITERATIONS, MIXING_H5, TRAIN_TIMES, VAL_TIMES
+# Optional overrides at submit time: ITERATIONS, MIXING_H5, TRAIN_TIMES, VAL_TIMES,
+# DOMAIN_LR (LR patch edge, default 32), PATCHES_PER_CROP (default 8)
 # e.g. TRAIN_TIMES="4 9 14 20" VAL_TIMES=27 ITERATIONS=50000 sbatch ...
+# HR 64^3 volumes (built by build_mixing64_dataset.sh):
+#   DOMAIN_LR=16 MIXING_H5=data/jhtdb_mixing/mixing_density_hr64_cpv128.h5 sbatch ...
 # Submit from the repo root:
 #     sbatch -A <project>-gpu slurm/arrhenius/run_dualedsr_mixing.sh
 # No `-N`: on Arrhenius it allocates (and bills) the whole 4-GPU node.
@@ -40,14 +43,14 @@ python -u src/train.py \
     --mixing_h5 ${MIXING_H5:-data/jhtdb_mixing/mixing_density.h5} \
     --train_times ${TRAIN_TIMES:-4 9 14 20 27} \
     --val_times ${VAL_TIMES:-36} \
-    --patches_per_crop 8 \
+    --patches_per_crop ${PATCHES_PER_CROP:-8} \
     --num_workers 8 \
     --iterations ${ITERATIONS:-100000} \
     --val_every 1000 \
     --val_batches 64 \
     --checkpoint_every 5000 \
     --log_every 100 \
-    --domain_size_lr 32 \
+    --domain_size_lr ${DOMAIN_LR:-32} \
     --scale 4 \
     --loss_type l1 \
     --base_filters 64 \
